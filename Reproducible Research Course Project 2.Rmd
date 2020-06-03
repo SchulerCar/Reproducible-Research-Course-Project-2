@@ -261,7 +261,7 @@ print(dmgSD)
 Total damages are estimated at $`r sprintf("%.1f",dmgSD$totalDamage[1])` billion. The highest losses come from `r dmgSD$EVTYPE[1]` events. The figure below presents the financial impact of the top 10 events, ranked in descending order of severity.
 
 
-```{r}
+```{r plotDamages}
 dmgSD$EVTYPE <- factor(dmgSD$EVTYPE, 
                             levels = dmgSD$EVTYPE)              # sort labels
 
