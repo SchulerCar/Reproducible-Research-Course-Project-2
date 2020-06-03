@@ -1,0 +1,283 @@
+---
+title: 'Severe Wheather Events, 1950-2011: Effects on Human Health and Economic Consequences'
+author: "Carlos Schuler"
+date: "6/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Synopsis
+
+In this report, we explore the NOAA Storm Database (which includes data on Severe Weather Events in the United States from 1950 to 2011, including location, impact to human life, property, crops, etc.) to answer two basic questions:
+
+1. Across the United States, which types of events are most harmful with respect to population health?  
+1. Across the United States, which types of events have the greatest economic consequences?
+
+The analysis presented below shows that, overwhelmingly, *tornadoes* are most harmful to population health, while *floods*, *hurricanes/typhoons* and *tornadoes* are the top three contributors to economic losses.
+
+## Loading and Processing the Raw Data
+
+The data from NOAA Storm Database is downloaded from 
+[this location](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+This database contains information regarding severe weather events in the years
+1950 - 2011.  Information regarding this database can be found at:  
+* [National Weather Service Storm Data Documentation](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)  
+* [National Climatic Data Center Storm Events FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf)
+
+### Packages and environment used in this analysis
+
+The following libraries are used in the present analysis:
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(tibble)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+sessionInfo()
+```
+
+
+### Data Processing: Downloading and Reading the Data
+
+The data is downloaded directly from its [web repository](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2).
+The data is contained in a compressed, comma-delimited file, with headers in the
+first line.
+
+```{r readData}
+dataFileName <- "repdata-data-StormData.csv.bz2"
+if(download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
+              dataFileName)) stop("Error downloading file")
+if(!file.exists(dataFileName)) stop("Could not find data file")
+
+# read.csv can read compressed files
+stormData<-as_tibble(read.csv(dataFileName))
+```
+
+The dimensions and structure of the data frame are:
+
+```{r exploreData}
+print(dimensions <- dim(stormData))
+str(stormData)
+```
+
+The database contains `r dimensions[1]` records, each containing `r dimensions[2]` fields of information.  For the present analysis, the columns we are interested in are:
+
+* *EVTYPE*: the type of event
+* *FATALITIES*: number of fatalities associated with the event
+* *INJURIES*: number of injuries associated with the event
+* *PROPDMG*, *PROPDMGEXP*: estimated property damage
+* *CROPDMG*, *CROPDMGEXP*: estimated crop damage
+
+```{r selectColumns}
+# Keep only what we need
+stormData <- stormData %>% select(EVTYPE,FATALITIES,INJURIES,PROPDMG,
+                                  PROPDMGEXP,CROPDMG,CROPDMGEXP)
+```
+
+Inspection of EVTYPE shows inconsistent capitalization and spacing.  To ensure proper grouping, this following clean-up is performed:
+
+```{r cleanup}
+# Cleanup EVTYPE
+stormData <- stormData %>% mutate(EVTYPE = as.factor(toupper(str_squish(EVTYPE))))
+```
+
+There are other transliterations and spelling errors in the *EVTYPE* field, no efforts to correct these are made in this study.
+
+Note that *EVTYPE* is coerced as a **factor**. The first 10 rows of the resulting data frame are:
+
+```{r viewData}
+head(stormData,10)
+```
+
+## Results
+
+### Effects of Severe Weather on Human Life
+
+The question *"Which types of events are most harmful with respect to population health?"*, can be asnwered by simply adding the number of *FATALITIES* and *INJURIES*. This will provide a crude quantification of the *harm*. After grouping by event type, *EVTYPE*, the harm for each category, *catHarm* is calculated. Finally, the total harm, *totalharm* and the percentage contribution for each event type, *percentHarm*, is evaluated.
+
+```{r harmCalculation}
+# Harm to population health is captured in FATALITIES and INJURIES
+sumHarmSD <- stormData %>% 
+        mutate(harm = FATALITIES + INJURIES) %>%                # calculate harm
+        group_by(EVTYPE) %>%                                    # group events
+        summarize(catHarm = sum(harm)) %>%                      # summarize harm by event
+        mutate(totalHarm = sum(catHarm),                        # calculate total harm
+               percentHarm = catHarm/totalHarm*100) %>%         # calculate percentages
+        arrange(desc(percentHarm))                              # sort descending
+
+head(sumHarmSD)
+```
+
+A total of `r sprintf("%.2f",sumHarmSD$totalHarm[1]/1000)` thousand *CASUALTIES* and *INJURIES* are recorded in the database, caused by severe weather events. Of these, *`r sumHarmSD$EVTYPE[1]`* as a category clearly dominates as the principal cause of harm to health in the period 1950-2011. Below, *`r sumHarmSD$EVTYPE[1]`* events are "separated out" so that this event category does not overwhelm the graphical representation of other event categories.
+
+```{r topOne}
+topHarmSD <- sumHarmSD %>% slice(n=1)                           # select top 1
+# Create "Other" row
+otherTotalHarm = topHarmSD$totalHarm[1]
+otherCatHarm = otherTotalHarm - sum(topHarmSD$catHarm)
+otherPercentHarm = 100 - sum(topHarmSD$percentHarm)
+
+topHarmSD <- topHarmSD %>%
+        add_row(EVTYPE="All Other Events",
+                catHarm=otherCatHarm,
+                totalHarm=otherTotalHarm,
+                percentHarm=otherPercentHarm)
+topHarmSD
+```
+
+The next 10 event categories are prepared for graphical display:
+
+```{r next10}
+# Events excluding top contributor
+highHarmSD <- sumHarmSD %>% slice(n=2:11)                       # select next top 10
+highHarmSD$EVTYPE <- factor(highHarmSD$EVTYPE, 
+                               levels = highHarmSD$EVTYPE)      # sort labels
+```
+
+In the figure below, the panel on the left shows how *`r sumHarmSD$EVTYPE[1]`* contribute `r sprintf("%.0f",topHarmSD$percentHarm[1])`% to the total number of *CASUALTIES* and *INJURIES*. The panel on the right shows the contributions of the next 10 event categories to the this total.
+
+```{r harmPlots}
+# Plots
+# Pie Chart top contributor
+plot1 = ggplot(topHarmSD,
+       aes(x="", y=percentHarm, fill=EVTYPE)) +
+        geom_bar(width = 1, size = 1, color = "white", stat = "identity") +
+        coord_polar("y", start=0) +
+        geom_text(aes(label = paste0(round(percentHarm), "%")), 
+                  position = position_stack(vjust = 0.5)) +
+        labs(x = NULL, y = NULL, fill = NULL, 
+             title = "Tornadoes vs. All Other Events") +
+        guides(fill = guide_legend(reverse = TRUE)) +
+        scale_fill_brewer(palette="Paired") +
+        theme_classic() +
+        theme(axis.line = element_blank(),
+              axis.text = element_blank(),
+              axis.ticks = element_blank(),
+              plot.title = element_text(hjust = 0, color = "#666666"),
+              legend.text = element_text(face = "bold", size = 10),
+              legend.position = "bottom")
+# Bar chart - 10 other contributors
+plot2 = ggplot(highHarmSD,
+       aes(x=EVTYPE, y=percentHarm, fill=EVTYPE)) +
+        geom_bar(width = 1, size = 1, color = "white", stat = "identity") +
+        labs(x = "", y = "Harm (%)", fill = "Event Type", 
+             title = "Events excluding Tornadoes") +
+        guides(fill = guide_legend(reverse = TRUE)) +
+        scale_fill_brewer(palette="Paired") +
+        theme_classic() +
+        theme(axis.line.x = element_blank(),
+              axis.text.x = element_blank(),
+              axis.ticks.x = element_blank(),
+              plot.title = element_text(hjust = 0, color = "#666666"),
+              legend.text = element_text(face = "bold", size = 10))
+# Render both plots in one side-by-side chart
+gridExtra::grid.arrange(plot1,plot2,ncol=2, 
+                        top = "NOAA Storm Database, 1950 - November 2011:\nHarmful Effects to Population Health")
+```
+
+The second highest contributor to harm is `r highHarmSD$EVTYPE[1]` at `r sprintf("%.0f",highHarmSD$percentHarm[1])`%.
+
+### Economic Consequences of Severe Weather Events
+
+The question *Which types of events have the greatest economic consequences?* can be answered by tallying up crop and property damages.  These are encoded in the database in the fields *CROPDMG*, *CROPDMGEXP*, *PROPDMG* and *PROPDMGEXP* in the form *base x 10^exp*, where *CROPDMG* and *PROPDMG* are *base* for crops and property, and *CROPDMGEXP* and *PROPDMGEXP* are their respective *exp*onents. 
+
+According to the documentation, the exponent in the database is coded as *K* for *thousands* (*exp*=3), *M* for *millions* (*exp*=6), etc.  However, other letters and numbers populate these fields. In this study, the *EXP*onents are interpreted according to the table presented below. The numeric values, "1", "2" ... "9", are not documented in the database description, but it appears to this analyst that this interpretation is a reasonable extrapolation.
+
+```{r expTable, results="asis", fig.width=5}
+knownMult <- data.frame(exp= c("",  "H",  "h",  "K",  "k",  "M",  "m",  "B",  "b",
+                               "0",  "1",  "2",  "3",  "4",  "5",  "6",  "7",  "8",
+                               "9"),
+             mult=as.numeric(c( 1,  100,  100,  1e3,  1e3,  1e6,  1e6,  1e9,  1e9,
+                                1,   10,  100,  1e3,  1e4,  1e5,  1e6,  1e7, 1e8,
+                                1e9)))
+
+# Output as a pretty table, split in two, side-by-side
+leftTab<- knitr::kable(slice(knownMult,n=1:9), "html", 
+                       col.names=c("*EXP*onent value", "Base multiplier"),
+                       align=c("c","c")) %>% 
+        kableExtra::kable_styling(bootstrap_options = c("striped","hover"), 
+                                  full_width = F, position="float_left")
+
+rightTab<-knitr::kable(slice(knownMult,n=10:19),"html", 
+                       col.names=c("*EXP*onent value", "Base multiplier"),
+                       align=c("c","c")) %>% 
+        kableExtra::kable_styling(bootstrap_options = c("striped","hover"), 
+                                  full_width = F, position="right")
+print(leftTab);print(rightTab)
+```
+
+There are entries in the database with uninterpretable *EXP* values:
+
+```{r badExp}
+print(unknownChars <-unique(c(stormData$PROPDMGEXP[!(stormData$PROPDMGEXP %in% knownMult$exp)], 
+         stormData$CROPDMGEXP[!(stormData$CROPDMGEXP %in% knownMult$exp)])))
+```
+
+The characters "`r unknownChars`" appear in the *EXP*onent fields. Fortunately, there is only a few records affected:
+
+```{r badExpCount}
+print(unknownCount <- mean(!(stormData$CROPDMGEXP %in% knownMult$exp & 
+                                stormData$PROPDMGEXP %in% knownMult$exp))*100)
+```
+
+Only `r sprintf("%.3f",unknownCount)`% of the entries are uninterpretable, they will be ignored.
+
+The economic impact calculation involves:
+
+* Filtering the records to eliminate those that are uninterpretable  
+* Use *left_join* operations to translate the *EXP*onent codes to multipliers as per the table above  
+* Perform the "*base x multilier*" operations for both *crop damage* and *property damage* 
+* Add *crop* *property damage* to obtain the total *damage* for each event
+* Group the dataset by event type, *EVTYPE*  
+* Calculate the damage associated with each event type, *catDamage*  
+* Add the category damages to calculate the total damage, *totalDamage*
+* Calculate the relative contribution from each category, *percentDamage*. 
+
+The code presented below implements these operations.
+
+This report focuses on the top 10 contributors to *totalDamage*.  This economic impact calculation ignores the contributions relating to the time-value of money, eg., one dollar in 1950 is considered equivalent to one dollar in 2011 (which is clearly not the case).  However, this simple calculation will allow to present a preliminary ranking of the event categories in terms of their economic impact.
+
+```{r damageCalculation}
+dmgSD <- stormData %>% 
+        filter(CROPDMGEXP %in% knownMult$exp,PROPDMGEXP %in% knownMult$exp) %>% 
+        left_join(knownMult,by=c("PROPDMGEXP"="exp")) %>% 
+        rename(propMult=mult) %>%                               # property multipliers
+        left_join(knownMult,by=c("CROPDMGEXP"="exp")) %>% 
+        rename(cropMult=mult) %>%                               # crop multipliers
+        mutate(damage = PROPDMG*propMult + 
+                       CROPDMG*cropMult) %>%                    # calculate damage
+        group_by(EVTYPE) %>%                                    # group events
+        summarize(catDamage = sum(damage)/10^9) %>%             # summarize impact by event in billion$
+        mutate(totalDamage = sum(catDamage),                    # calculate total impact
+               percentDamage = catDamage/totalDamage*100) %>%   # calculate percentages
+        arrange(desc(percentDamage)) %>%                        # sort descending
+        slice(n=1:10)
+print(dmgSD)
+```
+
+Total damages are estimated at $`r sprintf("%.1f",dmgSD$totalDamage[1])` billion. The highest losses come from `r dmgSD$EVTYPE[1]` events. The figure below presents the financial impact of the top 10 events, ranked in descending order of severity.
+
+
+```{r}
+dmgSD$EVTYPE <- factor(dmgSD$EVTYPE, 
+                            levels = dmgSD$EVTYPE)              # sort labels
+
+ggplot(dmgSD, aes(x=EVTYPE, y=catDamage, fill=EVTYPE)) +
+        geom_bar(width = 1, size = 1, color = "white", stat = "identity") +
+        labs(x = "", y = "Harm (Billions USD)", fill = "Event Type", 
+             title = "NOAA Storm Database, 1950 - November 2011:\nEconomic Consequences") +
+        guides(fill = guide_legend(reverse = TRUE)) +
+        scale_fill_brewer(palette="Paired") +
+        theme_classic() +
+        theme(axis.line.x = element_blank(),
+              axis.text.x = element_blank(),
+              axis.ticks.x = element_blank(),
+              plot.title = element_text(hjust = 0.5, color = "#666666"),
+              legend.text = element_text(face = "bold", size = 10))
+```
+
+
+
