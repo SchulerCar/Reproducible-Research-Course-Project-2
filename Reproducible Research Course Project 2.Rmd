@@ -230,9 +230,9 @@ The economic impact calculation involves:
 * Filtering the records to eliminate those that are uninterpretable  
 * Use *left_join* operations to translate the *EXP*onent codes to multipliers as per the table above  
 * Perform the "*base x multilier*" operations for both *crop damage* and *property damage* 
-* Add *crop* *property damage* to obtain the total *damage* for each event
+* Add *crop* and *property damages* to obtain the total *damage* for each event
 * Group the dataset by event type, *EVTYPE*  
-* Calculate the damage associated with each event type, *catDamage*  
+* Calculate the cummulative damage associated with each event type, *catDamage*  
 * Add the category damages to calculate the total damage, *totalDamage*
 * Calculate the relative contribution from each category, *percentDamage*. 
 
